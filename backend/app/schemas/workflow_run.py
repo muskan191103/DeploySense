@@ -40,3 +40,9 @@ class WorkflowRunPage(BaseModel):
     total: int
     page: int
     page_size: int
+
+class WorkflowRunUpdate(BaseModel):
+    status: str | None = Field(default=None, min_length=1, max_length=40)
+    conclusion: str | None = Field(default=None, max_length=40)
+    duration_seconds: int | None = Field(default=None, ge=0)
+    html_url: str | None = Field(default=None, max_length=500)

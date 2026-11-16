@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, Depends, HTTPException, Query, Response
 from sqlalchemy import func, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session, joinedload
@@ -9,6 +9,7 @@ from app.schemas.workflow_run import (
     WorkflowRunCreate,
     WorkflowRunPage,
     WorkflowRunRead,
+    WorkflowRunUpdate,
 )
 
 
@@ -110,3 +111,61 @@ def get_workflow_run(
         )
 
     return workflow_run
+
+@router.patch("/{run_id}", response_model=WorkflowRunRead)
+def update_workflow_run(
+    run_id: int,
+    payload: WorkflowRunUpdate,
+    db: Session = Depends(get_db),
+):
+    workflow_run = db.scalar(
+        select(WorkflowRun)
+        .options(joinedload(WorkflowRun.repository))
+        .where(WorkflowRun.id == run_id)
+    )
+
+    if workflow_run is None:
+        raise HTTPException(
+            status_code=404,
+            detail="Workflow run not found",
+        )
+
+    changes = payload.model_dump(exclude_unset=True)
+
+    if not changes:
+        raise HTTPException(
+            status_code=422,
+            detail="Provide at least one field to update",
+        )
+
+    for required_field in ("status", "duration_seconds"):
+        if required_field in changes and changes[required_field] is None:
+            raise HTTPException(
+                status_code=422,
+                detail=f"{required_field} cannot be null",
+            )
+
+    for field, value in changes.items():
+        setattr(workflow_run, field, value)
+
+    db.commit()
+    db.refresh(workflow_run)
+    return workflow_run
+
+@router.delete("/{run_id}", status_code=204)
+def delete_workflow_run(
+    run_id: int,
+    db: Session = Depends(get_db),
+):
+    workflow_run = db.get(WorkflowRun, run_id)
+
+    if workflow_run is None:
+        raise HTTPException(
+            status_code=404,
+            detail="Workflow run not found",
+        )
+
+    db.delete(workflow_run)
+    db.commit()
+
+    return Response(status_code=204)
